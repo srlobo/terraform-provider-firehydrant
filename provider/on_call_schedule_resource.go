@@ -383,19 +383,29 @@ func updateResourceFireHydrantOnCallSchedule(ctx context.Context, d *schema.Reso
 		if strategies := v.([]interface{}); len(strategies) > 0 {
 			strategy := strategies[0].(map[string]interface{})
 			strategyType := strategy["type"].(string)
-			handoffTime := strategy["handoff_time"].(string)
-			handoffDay := strategy["handoff_day"].(string)
 
 			updateRequest.Strategy = &components.UpdateTeamOnCallScheduleStrategy{
-				Type:        components.UpdateTeamOnCallScheduleType(strategyType),
-				HandoffTime: &handoffTime,
-				HandoffDay:  (*components.UpdateTeamOnCallScheduleHandoffDay)(&handoffDay),
+				Type: components.UpdateTeamOnCallScheduleType(strategyType),
 			}
 
-			// Set shift duration for custom strategy
+			// Only send the fields this strategy actually uses, the same way
+			// createResourceFireHydrantOnCallSchedule discards unused values.
+			// The unused ones come back from the schema as "", and omitzero
+			// only drops a nil pointer, not a pointer to "", so sending them makes
+			// the API reject the update with 400 "strategy[handoff_day] does
+			// not have a valid value".
 			if strategyType == "custom" {
 				shiftDuration := strategy["shift_duration"].(string)
 				updateRequest.Strategy.ShiftDuration = &shiftDuration
+			} else {
+				handoffTime := strategy["handoff_time"].(string)
+				updateRequest.Strategy.HandoffTime = &handoffTime
+
+				// handoff_day only applies to weekly; daily has no handoff day.
+				if strategyType == "weekly" {
+					handoffDay := strategy["handoff_day"].(string)
+					updateRequest.Strategy.HandoffDay = (*components.UpdateTeamOnCallScheduleHandoffDay)(&handoffDay)
+				}
 			}
 		}
 	}
